@@ -11,7 +11,7 @@ CREATE TABLE issues (
 -- Stories Table
 CREATE TABLE stories (
     id SERIAL PRIMARY KEY,
-    issue_id INTEGER REFERENCES issues(id),
+    issue_id VARCHAR(255) UNIQUE NOT NULL,
     story_points INTEGER,
     status VARCHAR(255),
     assignee VARCHAR(255),
@@ -23,7 +23,7 @@ CREATE TABLE stories (
 -- Bugs Table
 CREATE TABLE bugs (
     id SERIAL PRIMARY KEY,
-    issue_id INTEGER REFERENCES issues(id),
+    issue_id VARCHAR(255) UNIQUE NOT NULL,
     status VARCHAR(255),
     assignee VARCHAR(255),
     bug_root_cause TEXT
@@ -32,7 +32,7 @@ CREATE TABLE bugs (
 -- Status History Table
 CREATE TABLE status_history (
     id SERIAL PRIMARY KEY,
-    issue_id INTEGER REFERENCES issues(id),
+    issue_id VARCHAR(255) NOT NULL,
     changed_at TIMESTAMP NOT NULL,
     from_status VARCHAR(255),
     to_status VARCHAR(255)
@@ -41,7 +41,7 @@ CREATE TABLE status_history (
 -- Assignee History Table
 CREATE TABLE assignee_history (
     id SERIAL PRIMARY KEY,
-    issue_id INTEGER REFERENCES issues(id),
+    issue_id VARCHAR(255) NOT NULL,
     changed_at TIMESTAMP NOT NULL,
     from_assignee VARCHAR(255),
     to_assignee VARCHAR(255)
@@ -50,7 +50,7 @@ CREATE TABLE assignee_history (
 -- Code Review History Table
 CREATE TABLE code_review_history (
     id SERIAL PRIMARY KEY,
-    issue_id INTEGER REFERENCES stories(id),
+    issue_id VARCHAR(255) NOT NULL,
     changed_at TIMESTAMP NOT NULL,
     code_reviewer VARCHAR(255),
     code_review_status VARCHAR(255),
