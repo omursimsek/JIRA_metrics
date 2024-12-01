@@ -30,7 +30,7 @@ async def shutdown():
     await db_pool.close()
 
 
-async def insert_issue_data(issue, type):
+async def insert_issue_data(issue, type, project_key):
     async with db_pool.acquire() as connection:
         # Insert issue data
         if issue["fields"]["customfield_10180"] is None:
@@ -41,8 +41,8 @@ async def insert_issue_data(issue, type):
             owner = issue["fields"]["customfield_10180"]["displayName"]
         await connection.execute(
             """
-            INSERT INTO issues (issue_id, key, summary, owner, issue_type)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO issues (issue_id, key, summary, owner, issue_type, project)
+            VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (issue_id) DO NOTHING
             """,
             issue["id"],
@@ -50,14 +50,16 @@ async def insert_issue_data(issue, type):
             issue["fields"]["summary"],
             owner,
             type,
+            project_key,
         )
 
         if type == "story":
             # Insert or update the story in the stories table
             customfield_value = issue["fields"].get("customfield_10026")
+            customfield_int = 0
 
             try:
-                customfield_int = int(customfield_value) if customfield_value is not None else None
+                customfield_int = int(customfield_value) if customfield_value is not None and customfield_value != "" else 0
             except ValueError:
                 # Handle the case where the value cannot be converted to an integer
                 customfield_int = 0
@@ -207,7 +209,7 @@ async def fetch_jira_data(project_key: str):
         total_issues += len(issues)
 
         for issue in issues:
-            await insert_issue_data(issue, "story")
+            await insert_issue_data(issue, "story", project_key)
 
         # Check if we've fetched all issues
         if start_at + len(issues) >= data.get("total", 0):
@@ -247,7 +249,7 @@ async def fetch_jira_data(project_key: str):
         total_issues += len(issues)
 
         for issue in issues:
-            await insert_issue_data(issue, "bug")
+            await insert_issue_data(issue, "bug", project_key)
 
         # Check if we've fetched all issues
         if start_at + len(issues) >= data.get("total", 0):
@@ -260,6 +262,8 @@ async def fetch_jira_data(project_key: str):
 
 class IssueStatusHistory(BaseModel):
     issue_id: str
+    key: str
+    project: str
     status: str
     changed_at_start: datetime
     changed_at_end: datetime
@@ -275,25 +279,68 @@ async def fetch_from_db(query: str):
 @app.get("/average-times", response_model=List[IssueStatusHistory])
 async def get_average_times():
     query = """
-    SELECT
-        s.issue_id,
-        s.status AS status,
-        sh.changed_at AS changed_at_start,
-        LEAD(sh.changed_at) OVER (PARTITION BY s.issue_id ORDER BY sh.changed_at) AS changed_at_end,
-        st.story_points,
-        i.owner
-    FROM
-        status_history sh
-    JOIN issues i ON sh.issue_id = i.issue_id
-    JOIN stories st ON st.issue_id = s.issue_id
+            SELECT
+            s.issue_id,
+            i.key,
+            i.project,
+            sh.from_status AS status,
+            sh.to_status AS to_status,
+            sh.changed_at AS changed_at_start,
+            COALESCE(LEAD(sh.changed_at) OVER (PARTITION BY s.issue_id ORDER BY sh.changed_at), NOW()) AS changed_at_end,
+            s.story_points,
+            i.owner
+        FROM
+            status_history sh
+        JOIN issues i ON sh.issue_id = i.issue_id
+        JOIN stories s ON s.issue_id = i.issue_id
     """
     data = await fetch_from_db(query)
+    #return data
     return [
         {
             "issue_id": record["issue_id"],
+            "key":record["key"],
+            "project":record["project"],
             "status": record["status"],
+            "to_status": record["to_status"],
             "changed_at_start": record["changed_at_start"],
             "changed_at_end": record["changed_at_end"],
+            "story_points": record["story_points"],
+            "owner": record["owner"]
+        }
+        for record in data
+    ]
+
+class Story(BaseModel):
+    issue_id: str
+    key: str
+    project: str
+    status: str
+    story_points: int
+    owner: str
+
+@app.get("/stories", response_model=List[Story])
+async def get_average_times():
+    query = """
+            SELECT
+            i.issue_id,
+            i.key,
+            i.owner,
+            i.project,
+            s.status,
+            s.story_points
+        FROM
+            stories s
+        JOIN issues i ON s.issue_id = i.issue_id
+    """
+    data = await fetch_from_db(query)
+    #return data
+    return [
+        {
+            "issue_id": record["issue_id"],
+            "key":record["key"],
+            "project":record["project"],
+            "status": record["status"],
             "story_points": record["story_points"],
             "owner": record["owner"]
         }

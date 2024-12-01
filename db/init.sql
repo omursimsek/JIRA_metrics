@@ -5,7 +5,8 @@ CREATE TABLE issues (
     key VARCHAR(255) NOT NULL,
     summary TEXT NOT NULL,
     owner VARCHAR(255) NOT NULL,
-    issue_type VARCHAR(50) NOT NULL
+    issue_type VARCHAR(50) NOT NULL,
+    project VARCHAR(50) NOT NULL
 );
 
 -- Stories Table

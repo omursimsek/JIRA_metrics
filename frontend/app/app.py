@@ -3,13 +3,17 @@ import pandas as pd
 import plotly.express as px
 import requests
 
-API_URL = "http://0.0.0.0:8000/average-times"
+API_URL = "http://backend:8000/average-times"
 
 def fetch_data():
     """Fetch data from the FastAPI backend."""
     response = requests.get(API_URL)
     if response.status_code == 200:
-        return pd.DataFrame(response.json())
+        df = pd.DataFrame(response.json())
+        # Convert date columns to datetime objects
+        df['changed_at_start'] = pd.to_datetime(df['changed_at_start'], utc=True, format='mixed')
+        df['changed_at_end'] = pd.to_datetime(df['changed_at_end'], utc=True, format='mixed')
+        return df
     else:
         st.error("Failed to fetch data from backend.")
         return pd.DataFrame()
