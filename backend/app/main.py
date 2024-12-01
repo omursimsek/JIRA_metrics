@@ -35,6 +35,7 @@ async def insert_issue_data(issue, type):
             """
             INSERT INTO issues (issue_id, key, summary, owner, issue_type)
             VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (issue_id) DO NOTHING
             """,
             issue["id"],
             issue["key"],
@@ -80,6 +81,7 @@ async def insert_issue_data(issue, type):
                             """
                             INSERT INTO code_review_history (issue_id, code_review_status, changed_at)
                             VALUES ($1, $2, $3)
+                            ON CONFLICT (issue_id, code_review_status, changed_at) DO NOTHING
                             """,
                             issue["id"],
                             item["toString"],
@@ -95,6 +97,7 @@ async def insert_issue_data(issue, type):
                         """
                         INSERT INTO status_history (issue_id, from_status, to_status, changed_at)
                         VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (issue_id, from_status, to_status, changed_at) DO NOTHING
                         """,
                         issue["id"],
                         item["fromString"],
@@ -111,9 +114,10 @@ async def insert_issue_data(issue, type):
                         """
                         INSERT INTO assignee_history (issue_id, from_assignee, to_assignee, changed_at)
                         VALUES ($1, $2, $3, $4)
+                        ON CONFLICT (issue_id, from_assignee, to_assignee, changed_at) DO NOTHING
                         """,
                         issue["id"],
-                        item["fromString"],
+                        item["fromString"] if item["fromString"] is not None else "None",
                         item["toString"],
                         changed_at,
                     )

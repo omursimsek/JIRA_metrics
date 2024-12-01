@@ -35,7 +35,8 @@ CREATE TABLE status_history (
     issue_id VARCHAR(255) NOT NULL,
     changed_at TIMESTAMP NOT NULL,
     from_status VARCHAR(255),
-    to_status VARCHAR(255)
+    to_status VARCHAR(255),
+    UNIQUE (issue_id, from_status, to_status, changed_at)
 );
 
 -- Assignee History Table
@@ -44,7 +45,8 @@ CREATE TABLE assignee_history (
     issue_id VARCHAR(255) NOT NULL,
     changed_at TIMESTAMP NOT NULL,
     from_assignee VARCHAR(255),
-    to_assignee VARCHAR(255)
+    to_assignee VARCHAR(255),
+    UNIQUE (issue_id, from_assignee, to_assignee, changed_at)
 );
 
 -- Code Review History Table
@@ -54,5 +56,6 @@ CREATE TABLE code_review_history (
     changed_at TIMESTAMP NOT NULL,
     code_reviewer VARCHAR(255),
     code_review_status VARCHAR(255),
-    code_review_result VARCHAR(255)
+    code_review_result VARCHAR(255),
+    UNIQUE (issue_id, code_review_status, changed_at)
 );
