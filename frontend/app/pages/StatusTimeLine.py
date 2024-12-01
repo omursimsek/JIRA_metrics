@@ -45,6 +45,7 @@ def main():
 
     # Timeline visualization
     st.subheader("Timeline for Stories")
+    data = data.sort_values(by="changed_at_start", ascending=False)
     fig = px.timeline(
         data,
         x_start="changed_at_start",
@@ -55,7 +56,8 @@ def main():
         title="Timeline of Status Changes for Stories",
         labels={"key": "Story ID", "changed_at_start": "Start", "changed_at_end": "End"}
     )
-    fig.update_yaxes(categoryorder="total ascending")
+    #fig.update_yaxes(categoryorder="total ascending")
+    fig.update_yaxes(categoryorder="array", categoryarray=data["issue_id"].tolist())
     st.plotly_chart(fig)
 
 if __name__ == "__main__":

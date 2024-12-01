@@ -62,6 +62,9 @@ def main():
 
     # Fetch data from the backend
     st.write("Loading data...")
+    if st.button("Reload Data"):
+        st.cache_data.clear()
+        #st.experimental_rerun()
     data = fetch_data()
 
     if data.empty:

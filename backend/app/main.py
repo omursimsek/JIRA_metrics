@@ -6,6 +6,10 @@ import asyncpg
 from pydantic import BaseModel
 from typing import List
 from datetime import datetime
+from sqlalchemy import create_engine, select, Table, MetaData
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+import pandas as pd
 
 app = FastAPI()
 
@@ -71,7 +75,7 @@ async def insert_issue_data(issue, type, project_key):
                 code_reviewer = issue["fields"]["customfield_10202"]["displayName"]
             if issue["fields"]["customfield_10203"] is None:
                 code_review_status = "None"
-            elif issue["fields"]["customfield_10203"]["value"] is None:
+            elif issue["fields"]["customfield_10203"]["value"] is None or issue["fields"]["customfield_10203"]["value"] == '':
                 code_review_status = "None"
             else:
                 code_review_status = issue["fields"]["customfield_10203"]["value"]
@@ -265,6 +269,7 @@ class IssueStatusHistory(BaseModel):
     key: str
     project: str
     status: str
+    from_status: str
     changed_at_start: datetime
     changed_at_end: datetime
     story_points: int
@@ -283,8 +288,8 @@ async def get_average_times():
             s.issue_id,
             i.key,
             i.project,
-            sh.from_status AS status,
-            sh.to_status AS to_status,
+            sh.from_status AS from_status,
+            sh.to_status AS status,
             sh.changed_at AS changed_at_start,
             COALESCE(LEAD(sh.changed_at) OVER (PARTITION BY s.issue_id ORDER BY sh.changed_at), NOW()) AS changed_at_end,
             s.story_points,
@@ -302,7 +307,7 @@ async def get_average_times():
             "key":record["key"],
             "project":record["project"],
             "status": record["status"],
-            "to_status": record["to_status"],
+            "from_status": record["from_status"],
             "changed_at_start": record["changed_at_start"],
             "changed_at_end": record["changed_at_end"],
             "story_points": record["story_points"],
@@ -343,6 +348,62 @@ async def get_average_times():
             "status": record["status"],
             "story_points": record["story_points"],
             "owner": record["owner"]
+        }
+        for record in data
+    ]
+class CodeReview(BaseModel):
+    issue_id: str
+    changed_at: datetime
+    code_review_status: str
+    project: str
+
+@app.get("/code-review-history", response_model=List[CodeReview])
+async def get_code_review_history():
+        # Query to fetch all data from the code_review_history table
+        # query = """
+        #         SELECT
+        #         i.issue_id,
+        #         changed_at,
+        #         code_review_status,
+        #         project
+        #     FROM
+        #         code_review_history c
+        #     JOIN issues i on i.issue_id = c.issue_id
+        # """
+        query = """WITH ranked_reviews AS (
+            SELECT
+                crh.*,
+                ROW_NUMBER() OVER (
+                    PARTITION BY issue_id
+                    ORDER BY 
+                        CASE 
+                            WHEN code_review_status LIKE '%Not Passed%' THEN 1 
+                            ELSE 2 
+                        END,
+                        changed_at DESC
+                ) AS rn
+            FROM 
+                code_review_history crh
+        )
+        SELECT
+            i.issue_id,
+            changed_at,
+            code_review_status,
+            i.project
+        FROM 
+            ranked_reviews rr
+        JOIN issues i on i.issue_id = rr.issue_id
+        WHERE 
+            rn = 1;
+        """
+        data = await fetch_from_db(query)
+        
+        return [
+        {
+            "issue_id": record["issue_id"],
+            "changed_at":record["changed_at"],
+            "code_review_status":record["code_review_status"],
+            "project":record["project"]
         }
         for record in data
     ]

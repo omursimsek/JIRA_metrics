@@ -6,3 +6,4 @@ pydantic
 sqlalchemy
 python-dotenv
 asyncpg
+pandas
