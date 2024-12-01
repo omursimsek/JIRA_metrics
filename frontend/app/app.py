@@ -1,84 +1,60 @@
-import asyncio
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from utils import fetch_issues_data, fetch_status_history, fetch_assignee_history
+import requests
 
-# Streamlit App Configuration
-st.set_page_config(page_title="Jira Dashboard", layout="wide")
+API_URL = "http://0.0.0.0:8000/average-times"
 
-st.title("Jira Issue Tracker Dashboard")
+def fetch_data():
+    """Fetch data from the FastAPI backend."""
+    response = requests.get(API_URL)
+    if response.status_code == 200:
+        return pd.DataFrame(response.json())
+    else:
+        st.error("Failed to fetch data from backend.")
+        return pd.DataFrame()
 
-# Sidebar Filters
-st.sidebar.header("Filters")
-project_filter = st.sidebar.text_input("Project Key (optional)", "")
-status_filter = st.sidebar.text_input("Status (optional)", "")
-assignee_filter = st.sidebar.text_input("Assignee (optional)", "")
+def calculate_average_time(df, group_by_columns):
+    """Calculate average time spent on a status grouped by specified columns."""
+    df['time_spent'] = (pd.to_datetime(df['changed_at_end']) - pd.to_datetime(df['changed_at_start'])).dt.total_seconds() / 3600  # Convert to hours
+    grouped = df.groupby(group_by_columns)['time_spent'].mean().reset_index()
+    return grouped
 
-# Fetch Data
-issues_data = asyncio.run(fetch_issues_data(project_filter, status_filter, assignee_filter))
-status_history_data = asyncio.run(fetch_status_history(project_filter))
-assignee_history_data = asyncio.run(fetch_assignee_history(project_filter))
+def main():
+    st.title("Average Time Analysis Dashboard")
 
-# Display Data Summary
-st.header("Data Summary")
-st.write(f"Total Issues: {len(issues_data)}")
-st.write(f"Status History Records: {len(status_history_data)}")
-st.write(f"Assignee History Records: {len(assignee_history_data)}")
+    # Fetch data from the backend
+    st.write("Loading data...")
+    data = fetch_data()
 
-# Display Data as Tables
-with st.expander("Issues Table"):
-    st.dataframe(issues_data)
+    if data.empty:
+        return
 
-with st.expander("Status History Table"):
-    st.dataframe(status_history_data)
+    # Process data
+    data = data.dropna(subset=['changed_at_end'])  # Drop rows without an end timestamp
 
-with st.expander("Assignee History Table"):
-    st.dataframe(assignee_history_data)
+    # Visualization 1: Average time spent on status per owner
+    st.subheader("Average Time Spent on Status Per Owner")
+    avg_time_owner = calculate_average_time(data, ['owner', 'status'])
+    fig1 = px.bar(avg_time_owner, x='owner', y='time_spent', color='status', barmode='group',
+                  labels={'time_spent': 'Avg Time Spent (hours)'}, title="Average Time Spent on Status Per Owner")
+    st.plotly_chart(fig1)
 
-# Visualization Section
-st.header("Visualizations")
+    # Visualization 2: Average time spent per status per story point
+    st.subheader("Average Time Spent Per Status Per Story Point")
+    avg_time_status_story = calculate_average_time(data, ['story_points', 'status'])
+    fig2 = px.bar(avg_time_status_story, x='story_points', y='time_spent', color='status', barmode='group',
+                  labels={'time_spent': 'Avg Time Spent (hours)', 'story_points': 'Story Points'},
+                  title="Average Time Spent Per Status Per Story Point")
+    st.plotly_chart(fig2)
 
-# Chart: Issue Count by Status
-st.subheader("Issue Count by Status")
-#print(issues_data)
-status_count = issues_data[3].value_counts().reset_index()
-status_count.columns = ["Status", "Count"]
-fig1 = px.bar(status_count, x="Status", y="Count", title="Issue Count by Status", text="Count")
-st.plotly_chart(fig1, use_container_width=True)
+    # Visualization 3: Average time spent per status per story point per owner
+    st.subheader("Average Time Spent Per Status Per Story Point Per Owner")
+    avg_time_status_story_owner = calculate_average_time(data, ['owner', 'story_points', 'status'])
+    fig3 = px.bar(avg_time_status_story_owner, x='story_points', y='time_spent', color='status', barmode='group',
+                  facet_col='owner', labels={'time_spent': 'Avg Time Spent (hours)', 'story_points': 'Story Points'},
+                  title="Average Time Spent Per Status Per Story Point Per Owner")
+    st.plotly_chart(fig3)
 
-# Chart: Assignee Distribution
-st.subheader("Issues by Assignee")
-assignee_count = issues_data[4].value_counts().reset_index()
-assignee_count.columns = ["Assignee", "Count"]
-fig2 = px.pie(assignee_count, names="Assignee", values="Count", title="Issues by Assignee")
-st.plotly_chart(fig2, use_container_width=True)
-
-# Chart: Status Changes Over Time
-st.write(status_history_data)
-st.subheader("Status Changes Over Time")
-status_history_data["changed_at"] = pd.to_datetime(status_history_data["changed_at"])
-status_history_grouped = status_history_data.groupby("changed_at")["status"].count().reset_index()
-#st.write(status_history_data)
-fig3 = px.line(
-    status_history_grouped,
-    x="changed_at",
-    y="status",
-    title="Status Changes Over Time",
-    labels={"changed_at": "Date", "status": "Change Count"}
-)
-st.plotly_chart(fig3, use_container_width=True)
-
-
-# Chart: Assignee Changes Over Time
-st.subheader("Assignee Changes Over Time")
-assignee_history_data[2] = pd.to_datetime(assignee_history_data[2])
-assignee_history_grouped = assignee_history_data.groupby(2)[1].count().reset_index()
-fig4 = px.line(
-    assignee_history_grouped,
-    x="changed_at",
-    y="assignee",
-    title="Assignee Changes Over Time",
-    labels={"changed_at": "Date", "assignee": "Change Count"}
-)
-st.plotly_chart(fig4, use_container_width=True)
+if __name__ == "__main__":
+    main()
