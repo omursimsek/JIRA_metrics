@@ -10,14 +10,19 @@ from sqlalchemy import create_engine, select, Table, MetaData
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 import pandas as pd
+from routes.timestatus import router as timestatus_router
+import config
 
 app = FastAPI()
 
+# Add Routes to main application
+app.include_router(timestatus_router, prefix="/timestatus", tags=["timestatus"])
+
 # Load environment variables
-JIRA_BASE_URL = os.getenv("JIRA_BASE_URL")
-JIRA_API_TOKEN = os.getenv("JIRA_API_TOKEN")
-JIRA_EMAIL = os.getenv("JIRA_EMAIL")
-DATABASE_URL = os.getenv("DATABASE_URL")
+JIRA_BASE_URL = config.JIRA_BASE_URL
+JIRA_API_TOKEN = config.JIRA_API_TOKEN
+JIRA_EMAIL = config.JIRA_EMAIL
+DATABASE_URL = config.DATABASE_URL
 
 # Database connection pool
 db_pool = None
