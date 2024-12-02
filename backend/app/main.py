@@ -274,6 +274,7 @@ class IssueStatusHistory(BaseModel):
     changed_at_end: datetime
     story_points: int
     owner: str
+    current_status: str
 
 async def fetch_from_db(query: str):
     conn = await asyncpg.connect(DATABASE_URL)
@@ -293,7 +294,8 @@ async def get_average_times():
             sh.changed_at AS changed_at_start,
             COALESCE(LEAD(sh.changed_at) OVER (PARTITION BY s.issue_id ORDER BY sh.changed_at), NOW()) AS changed_at_end,
             s.story_points,
-            i.owner
+            i.owner,
+            s.status AS current_status
         FROM
             status_history sh
         JOIN issues i ON sh.issue_id = i.issue_id
@@ -311,7 +313,8 @@ async def get_average_times():
             "changed_at_start": record["changed_at_start"],
             "changed_at_end": record["changed_at_end"],
             "story_points": record["story_points"],
-            "owner": record["owner"]
+            "owner": record["owner"],
+            "current_status": record["current_status"]
         }
         for record in data
     ]

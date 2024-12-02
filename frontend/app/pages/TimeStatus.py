@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime, timedelta
+import plotly.express as px
 
 API_URL = "http://backend:8000/average-times"
 
@@ -19,6 +20,14 @@ TURKISH_HOLIDAYS = [
 
 WORKING_HOURS_START = 9  # Start of the working day
 WORKING_HOURS_END = 17  # End of the working day
+
+# Product mapping moved to frontend
+PRODUCT_MAPPING = {
+    "RTMS": ["FFF", "SLY", "EXW"],
+    "PTM/ROM": ["PB", "SMY"],
+    "RSB/FLEET": ["AAV"],
+    "Integration": ["ISY"]
+}
 
 def fetch_average_time():
     """Fetch raw code review data from the FastAPI backend."""
@@ -85,22 +94,62 @@ def main():
         lambda row: calculate_working_hours(row["changed_at_start"], row["changed_at_end"]), axis=1
     )
 
-    # Aggregate total working hours by project
-    aggregated = df.groupby("project")["working_hours"].sum().reset_index()
-
-    # Visualization
-    st.subheader("Total Working Hours in 'In Progress' Status by Project")
-    st.bar_chart(aggregated.set_index("project"))
-
     # Add weekly breakdown
     df["week"] = df["changed_at_start"].dt.to_period("W").apply(lambda r: r.start_time)
     weekly_aggregated = df.groupby(["project", "week"])["working_hours"].sum().reset_index()
 
+    # Visualization: Line Chart for Weekly Data by Project
     st.subheader("Weekly 'In Progress' Times by Project")
-    for project in weekly_aggregated["project"].unique():
-        project_data = weekly_aggregated[weekly_aggregated["project"] == project]
-        st.write(f"Project: {project}")
-        st.dataframe(project_data)
+    fig = px.line(
+        weekly_aggregated, 
+        x="week", 
+        y="working_hours", 
+        color="project", 
+        title="Weekly 'In Progress' Times by Project",
+        labels={"week": "Week", "working_hours": "Working Hours", "project": "Project"}
+    )
+    fig.update_layout(xaxis_title="Week", yaxis_title="Working Hours", legend_title="Project")
+    st.plotly_chart(fig)
+
+    df["product"] = df["project"].map(
+        lambda x: next((product for product, projects in PRODUCT_MAPPING.items() if x in projects), None)
+    )
+
+    # Remove rows where product mapping was not found
+    df = df.dropna(subset=["product"])
+
+    # Add weekly breakdown
+    df["week"] = df["changed_at_start"].dt.to_period("W").apply(lambda r: r.start_time)
+    weekly_aggregated = df.groupby(["product", "week"])["working_hours"].sum().reset_index()
+
+    # # Generate a complete range of weeks within the data's date range
+    # start_date = df["changed_at_start"].min().date()
+    # end_date = df["changed_at_end"].max().date()
+    # all_weeks = pd.date_range(start=start_date, end=end_date, freq='W')
+
+    # # Create a DataFrame for all possible weeks and merge it with the data
+    # all_weeks_df = pd.DataFrame({
+    #     "week": all_weeks,
+    #     "product": df["product"].unique()
+    # })
+    # all_weeks_df["week"] = all_weeks_df["week"].dt.date
+
+    # # Merge and fill missing data with zero
+    # complete_df = pd.merge(all_weeks_df, weekly_aggregated, on=["product", "week"], how="left").fillna(0)
+
+
+    # Visualization: Line Chart for Weekly Data by Product
+    st.subheader("Weekly 'In Progress' Times by Product")
+    fig = px.line(
+        weekly_aggregated, 
+        x="week", 
+        y="working_hours", 
+        color="product", 
+        title="Weekly 'In Progress' Times by Product",
+        labels={"week": "Week", "working_hours": "Working Hours", "product": "Product"}
+    )
+    fig.update_layout(xaxis_title="Week", yaxis_title="Working Hours", legend_title="Product")
+    st.plotly_chart(fig)
 
 if __name__ == "__main__":
     main()
