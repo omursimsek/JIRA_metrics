@@ -6,7 +6,10 @@ CREATE TABLE issues (
     summary TEXT NOT NULL,
     owner VARCHAR(255) NOT NULL,
     issue_type VARCHAR(50) NOT NULL,
-    project VARCHAR(50) NOT NULL
+    project VARCHAR(50) NOT NULL,
+    created TIMESTAMP NOT NULL,
+    resolutiondate TIMESTAMP,
+    resolution VARCHAR(255)
 );
 
 -- Stories Table

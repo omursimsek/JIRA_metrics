@@ -11,12 +11,23 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 import pandas as pd
 from routes.timestatus import router as timestatus_router
+from routes.bugscreatevsresolved import router as bugscreatevsresolved
+from routes.bugscreatevsresolvedproduct import router as bugscreatevsresolvedproduct
+from routes.bugsrootcause import router as bugsrootcause
+from routes.bugspriorityproject import router as bugspriorityproject
+
+
+
 import config
 
 app = FastAPI()
 
 # Add Routes to main application
 app.include_router(timestatus_router, prefix="/timestatus", tags=["timestatus"])
+app.include_router(bugscreatevsresolved, prefix="/bugs", tags=["bugs"])
+app.include_router(bugscreatevsresolvedproduct, prefix="/bugsproduct", tags=["bugsproduct"])
+app.include_router(bugsrootcause, prefix="/bugsrootcause", tags=["bugsrootcause"])
+app.include_router(bugspriorityproject, prefix="/bugspriorityproject", tags=["bugspriorityproject"])
 
 # Load environment variables
 JIRA_BASE_URL = config.JIRA_BASE_URL
@@ -48,11 +59,25 @@ async def insert_issue_data(issue, type, project_key):
             owner = "None"
         else:
             owner = issue["fields"]["customfield_10180"]["displayName"]
+        created = parse_jira_timestamp(issue["fields"]["created"])
+        if issue["fields"]["resolutiondate"] is None:
+            resolutiondate = None
+        else:
+            resolutiondate = parse_jira_timestamp(issue["fields"]["resolutiondate"])
+        if issue["fields"]["resolution"] is None:
+            resolution = None
+        elif issue["fields"]["resolution"]["name"] is None:
+            resolution = None
+        else:
+            resolution = issue["fields"]["resolution"]["name"]
         await connection.execute(
             """
-            INSERT INTO issues (issue_id, key, summary, owner, issue_type, project)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (issue_id) DO NOTHING
+            INSERT INTO issues (issue_id, key, summary, owner, issue_type, project, created, resolutiondate, resolution)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (issue_id) DO UPDATE
+            SET created = EXCLUDED.created, 
+                    resolutiondate = EXCLUDED.resolutiondate, 
+                    resolution = EXCLUDED.resolution
             """,
             issue["id"],
             issue["key"],
@@ -60,6 +85,9 @@ async def insert_issue_data(issue, type, project_key):
             owner,
             type,
             project_key,
+            created,
+            resolutiondate,
+            resolution,
         )
 
         if type == "story":
@@ -121,29 +149,30 @@ async def insert_issue_data(issue, type, project_key):
         elif type == "bug":
             # Insert or update the bug in the bugs table
             customfield_value = (
-                issue["fields"].get("customfield_10104", [])
-                if isinstance(issue["fields"].get("customfield_10104"), list)
-                else []
+                issue["fields"]["customfield_10104"]
+                if issue["fields"]["customfield_10104"] else None
             )
 
             # Extract the "displayName" from the first item in the list if it exists
             bug_root_cause = (
-                customfield_value[0].get("displayName", "None") if customfield_value else "None"
+                customfield_value[0]["value"] if customfield_value else "None"
             )
 
             await connection.execute(
                 """
-                INSERT INTO bugs (issue_id, status, assignee, bug_root_cause)
-                VALUES ($1, $2, $3, $4)
+                INSERT INTO bugs (issue_id, status, assignee, bug_root_cause, priority)
+                VALUES ($1, $2, $3, $4, $5)
                 ON CONFLICT (issue_id) DO UPDATE
                 SET status = EXCLUDED.status, 
                     assignee = EXCLUDED.assignee,
-                    bug_root_cause = EXCLUDED.bug_root_cause 
+                    bug_root_cause = EXCLUDED.bug_root_cause, 
+                    priority = EXCLUDED.priority
                 """,
                 issue["id"],
                 issue["fields"]["status"]["name"],
                 issue["fields"]["assignee"]["displayName"] if issue["fields"]["assignee"] else "None",
                 bug_root_cause, # Bug_root_cause
+                issue["fields"]["priority"]["name"],
             )
 
         # Insert status history
@@ -203,7 +232,7 @@ async def fetch_jira_data(project_key: str):
     while True:
         params = {
             "jql": f"project={project_key} AND issuetype=Story",
-            "fields": "summary,status,assignee,customfield_10026,customfield_10202,customfield_10203,customfield_10180", #story points, code reviewer, code review result, owner
+            "fields": "summary,status,assignee,customfield_10026,customfield_10202,customfield_10203,customfield_10180,created,resolutiondate,resolution", #story points, code reviewer, code review result, owner
             "expand": "changelog",
             "startAt": start_at,
             "maxResults": max_results,
@@ -243,7 +272,7 @@ async def fetch_jira_data(project_key: str):
     while True:
         params = {
             "jql": f"project={project_key} AND issuetype=Bug",
-            "fields": "summary,status,assignee,customfield_10180,customfield_10104", #owner, root cause
+            "fields": "summary,status,assignee,customfield_10180,customfield_10104,created,resolutiondate,resolution,priority", #owner, root cause
             "expand": "changelog",
             "startAt": start_at,
             "maxResults": max_results,
@@ -415,3 +444,102 @@ async def get_code_review_history():
         }
         for record in data
     ]
+
+
+@app.get("/fetch-jira-data/story")
+async def fetch_jira_data_story():
+    """
+    Fetch all issues from a Jira project and store them in the database.
+    """
+    url = f"{JIRA_BASE_URL}/rest/api/3/search"
+    auth = (JIRA_EMAIL, JIRA_API_TOKEN)
+    start_at = 0
+    max_results = 100
+    total_issues = 0
+
+    while True:
+        params = {
+            "jql": f"project in (FFF, EXW,SLY,AAV,ISY,PB,SMY) AND updated > -2d AND issuetype=Story",
+            "fields": "summary,status,assignee,customfield_10026,customfield_10202,customfield_10203,customfield_10180,created,resolutiondate,resolution,project", #story points, code reviewer, code review result, owner
+            "expand": "changelog",
+            "startAt": start_at,
+            "maxResults": max_results,
+        }
+
+        response = requests.get(url, auth=auth, params=params)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        data = response.json()
+        issues = data.get("issues", [])
+        total_issues += len(issues)
+
+        for issue in issues:
+            await insert_issue_data(issue, "story", issue['fields']['project']['key'])
+
+        # Check if we've fetched all issues
+        if start_at + len(issues) >= data.get("total", 0):
+            break
+
+        # Update startAt for the next page
+        start_at += max_results
+
+    return {"message": f"Fetched and stored data for {total_issues} issues in project {issue['fields']['project']['key']}"}
+
+@app.get("/fetch-jira-data/bug")
+async def fetch_jira_data_bug():
+    """
+    Fetch all issues from a Jira project and store them in the database.
+    """
+    url = f"{JIRA_BASE_URL}/rest/api/3/search"
+    auth = (JIRA_EMAIL, JIRA_API_TOKEN)
+    start_at = 0
+    max_results = 100
+    total_issues = 0
+
+    while True:
+        params = {
+            "jql": f"project in (FFF, EXW,SLY,AAV,ISY,PB,SMY)  AND issuetype=Bug",
+            "fields": "summary,status,assignee,customfield_10180,customfield_10104,created,resolutiondate,resolution,project,priority", #owner, root cause
+            "expand": "changelog",
+            "startAt": start_at,
+            "maxResults": max_results,
+        }
+
+        response = requests.get(url, auth=auth, params=params)
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail=response.text)
+
+        data = response.json()
+        issues = data.get("issues", [])
+        total_issues += len(issues)
+
+        for issue in issues:
+            await insert_issue_data(issue, "bug", issue['fields']['project']['key'])
+
+        # Check if we've fetched all issues
+        if start_at + len(issues) >= data.get("total", 0):
+            break
+
+        # Update startAt for the next page
+        start_at += max_results
+
+    return {"message": f"Fetched and stored data for {total_issues} issues in project {issue['fields']['project']['key']}"}
+
+class IssueStatusHistory(BaseModel):
+    issue_id: str
+    key: str
+    project: str
+    status: str
+    from_status: str
+    changed_at_start: datetime
+    changed_at_end: datetime
+    story_points: int
+    owner: str
+    current_status: str
+
+async def fetch_from_db(query: str):
+    conn = await asyncpg.connect(DATABASE_URL)
+    data = await conn.fetch(query)
+    await conn.close()
+    return data
