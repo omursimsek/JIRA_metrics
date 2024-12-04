@@ -15,6 +15,7 @@ from routes.bugscreatevsresolved import router as bugscreatevsresolved
 from routes.bugscreatevsresolvedproduct import router as bugscreatevsresolvedproduct
 from routes.bugsrootcause import router as bugsrootcause
 from routes.bugspriorityproject import router as bugspriorityproject
+from routes.bugsrootcauseresolution import router as bugsrootcauseresolution
 
 
 
@@ -27,6 +28,7 @@ app.include_router(timestatus_router, prefix="/timestatus", tags=["timestatus"])
 app.include_router(bugscreatevsresolved, prefix="/bugs", tags=["bugs"])
 app.include_router(bugscreatevsresolvedproduct, prefix="/bugsproduct", tags=["bugsproduct"])
 app.include_router(bugsrootcause, prefix="/bugsrootcause", tags=["bugsrootcause"])
+app.include_router(bugsrootcauseresolution, prefix="/bugsrootcauseresolution", tags=["bugsrootcauseresolution"])
 app.include_router(bugspriorityproject, prefix="/bugspriorityproject", tags=["bugspriorityproject"])
 
 # Load environment variables

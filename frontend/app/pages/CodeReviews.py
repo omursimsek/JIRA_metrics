@@ -57,6 +57,7 @@ else:
         st.plotly_chart(pie_fig)
 
     # Pie chart for all data
+    st.dataframe(data)
     st.subheader("All Code Review Results")
     all_pie_fig = px.pie(
         data,
