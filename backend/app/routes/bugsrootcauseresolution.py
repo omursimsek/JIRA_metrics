@@ -51,23 +51,14 @@ class Bug(Base):
 
 
 # Routes
-@router.get("/rootcause")
+@router.get("/rootcausewithrd")
 def get_bugs_per_day():
     session = SessionLocal()
     try:
-        # bugs root causes by project
-        # created_query = select(
-        #     cast(Issue.project, String).label("project"),
-        #     cast(Bug.bug_root_cause, String).label("root_cause"),
-        #     func.count().label("created_count")
-        # ).group_by( 
-        #     cast(Issue.project, String),
-        #     cast(Bug.bug_root_cause, String)
-        # )
-
         created_query = select(
             cast(Issue.project, String).label("project"),
             cast(Bug.bug_root_cause, String).label("root_cause"),
+            func.date(Issue.resolutiondate).label("date"),
             func.count().label("created_count")
         ).select_from(
             Bug
@@ -75,13 +66,14 @@ def get_bugs_per_day():
             Issue, isouter=True  # Uses the defined relationship
         ).group_by(
             cast(Issue.project, String),
-            cast(Bug.bug_root_cause, String)
+            cast(Bug.bug_root_cause, String),
+            func.date(Issue.resolutiondate).label("date")
         )
 
         root_causes = session.execute(created_query).fetchall()
 
         # Format results into dictionaries
-        root_causes = [{"project": row[0], "root_Cause": row[1], "count": row[2] } for row in root_causes]
+        root_causes = [{"project": row[0], "root_Cause": row[1], "date": row[2], "count": row[3] } for row in root_causes]
 
         return {"root_causes": root_causes}
     except Exception as e:
